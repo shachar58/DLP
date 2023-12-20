@@ -4,8 +4,8 @@ import pandas as pd
 
 class DatasetLoader:
 
-    def __init__(self, dataset_csv_name, base_drive_path='/content/drive/MyDrive/', user_path=''):
-        self.base_drive_path = base_drive_path
+    def __init__(self, dataset_csv_name, base_path='data/', user_path=''):
+        self.base_drive_path = base_path
         self.user_path = user_path
         self.data = pd.DataFrame()
         self.dataset_name = ''
@@ -43,5 +43,4 @@ class DatasetLoader:
         return False
 
     def print_configuration_info(self):
-        print(f'{self.dataset_name}')
-        print(f'Data loaded: {self.get_is_data_loaded()}')
+        print(f'{self.dataset_name}, Data loaded: {self.get_is_data_loaded()}')

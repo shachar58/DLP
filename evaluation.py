@@ -1,12 +1,12 @@
 from sklearn.cluster import KMeans
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, roc_curve,  auc
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+from sklearn.neighbors import LocalOutlierFactor
 import umap
 import pandas as pd
-from sklearn.neighbors import LocalOutlierFactor
 import numpy as np
-import plotly as plt
 import seaborn as sns
+import plotly as plt
 import plotly.io as pio
 import plotly.express as px
 
@@ -17,14 +17,16 @@ def map_umap(vectors_array):
     # Fit and transform the data
     data_2d = umap_model.fit_transform(vectors_array)
     print('finish UMAP')
-    return data_2d
+    return umap_model, data_2d
 
 
-def cluster_kmeans(vectors_array, selected_data, df_vec, data_2d, umap_model, n_cluster=8):
-    print('start clustering')
+def cluster_kmeans(vectors_array, n_cluster=8):
     kmeans = KMeans(n_clusters=n_cluster, random_state=42, n_init='auto')
     clusters = kmeans.fit_predict(vectors_array)
+    return kmeans, clusters
 
+
+def add_cluster_data(clusters, kmeans,  selected_data, df_vec, data_2d, umap_model):
     df = selected_data.copy()
     df_2d = pd.DataFrame(data_2d, columns=["x", 'y'])
     df = pd.concat([df, df_2d, df_vec], axis=1)
@@ -36,7 +38,7 @@ def cluster_kmeans(vectors_array, selected_data, df_vec, data_2d, umap_model, n_
     # Transform centroids to the same 2D space as the data
     centroids_2d = umap_model.transform(centroids)
     print('finished clustering')
-    return centroids_2d
+    return clusters, centroids_2d ,df
 
 
 def detect_LOF(df, df_vec, n_neighbors=20, contamination=0.2):
@@ -44,13 +46,10 @@ def detect_LOF(df, df_vec, n_neighbors=20, contamination=0.2):
     for source in df['source'].unique():
         # Get the indices of rows for the current source
         indices = df[df['source'] == source].index
-
         # Extract the corresponding vectors from df_vec
         vectors = df_vec.loc[indices]
-
         # Convert vectors to a numpy array if it's not already
         source_vectors_array = vectors.to_numpy()
-
         # Apply LOF
         lof = LocalOutlierFactor(n_neighbors=n_neighbors, contamination=contamination)
         print(source, source_vectors_array.shape)
@@ -67,7 +66,7 @@ def detect_LOF(df, df_vec, n_neighbors=20, contamination=0.2):
     # df['our_pred'] = df['lof_score'] > df['lof_threshold'] # source threshold based
 
 
-def confusion_matrix(df, pred_column='lof_prediction'):
+def create_confusion_matrix(df, pred_column='lof_prediction'):
     cm = confusion_matrix(y_true=df['anomaly'], y_pred=df[pred_column], labels=[0, 1])
     # Display confusion matrix
     ConfusionMatrixDisplay(cm, display_labels=['Benign', 'Anomaly']).plot(values_format='d')
@@ -134,10 +133,10 @@ def get_unique_clusters(kmeans):
     return unique_clusters
 
 
-def visualise_clusters(df, centroids_2d, dataset_name, window_size):
+def visualise_clusters(df, centroids_2d, dataset_name, window_size, hue='source'):
     # Visualize the clusters for each time window
     plt.figure(figsize=(15, 7))
-    sns.scatterplot(data=df, x='x', y='y', hue='anomaly', palette='dark')
+    sns.scatterplot(data=df, x='x', y='y', hue=hue, palette='dark')
 
     # Add centroid labels
     for i, c in enumerate(centroids_2d):
@@ -189,7 +188,7 @@ def evaluate_model_performance(data, true_label_col, predicted_label_col, datase
     # ROC AUC can be included if predicted_label_col contains scores/probabilities
 
     # Confusion Matrix
-    conf_matrix = confusion_matrix(data[true_label_col], data[predicted_label_col])
+    conf_matrix = create_confusion_matrix(data[true_label_col], data[predicted_label_col])
 
     # Creating a DataFrame to hold the results
     results_df = pd.DataFrame({
@@ -201,7 +200,7 @@ def evaluate_model_performance(data, true_label_col, predicted_label_col, datase
     return results_df
 
 
-def apply_labels(df, pred_column, dataset_name):
+def apply_labels(df, dataset_name, pred_column='lof_prediction'):
     # Replace these with the actual column names in your dataset
     true_label_col = 'anomaly'
     # Evaluate the model performance
