@@ -181,7 +181,7 @@ def interactive_graph(df, dataset_name, selected_data, window_size, train_ae, ex
 
     # Show the plot
     fig.show()
-    pio.write_html(fig, exp.plots_dir + f"{dataset_name} - train with AE {train_ae}.html")
+    pio.write_html(fig, exp.plots_dir + f"/{dataset_name} - train with AE {train_ae}.html")
 
 
 def evaluate_model_performance(data, true_label_col, predicted_label_col, dataset_name, exp):
