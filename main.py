@@ -1,6 +1,5 @@
 from Experiment import Experiment
 from DatasetLoader import DatasetLoader as dl
-from Parser import Parser
 import preprocessing as pre
 import Autoencoder as AE
 import evaluation as eva
@@ -15,15 +14,16 @@ csv_files = [
     # 'vod_oct_benign.csv',
     # 'vod_oct_anomaly.csv',
     # 'combined-dataset.csv',
-    # 'combined-anomaly.csv'
+    # 'combined-anomaly.csv',
+    # 'vod_storage_API_calls.csv'
 ]
 
 data_dir = "data/"
 
-minmax_model_to_load = '/model/small benign file_min_max_scaler-5.joblib'
-ae_model_to_load = '/model/small benign file-5.mdl'
+ae_model_to_load = 'models/small benign file.mdl'
+minmax_model_to_load = 'models/small benign file_min_max_scaler.joblib'
 
-train_ae = True
+train_ae = False
 
 window_size = 1
 """End of Configurations"""
@@ -43,21 +43,19 @@ for file in csv_files:
 experiments = []
 for current_loader in loaders:
     current_loader = loaders[current_loader]
-    exp1 = Experiment(f"/{current_loader.dataset_name}_{train_ae}")  # need to change for a more accurate representation
-
-    # p = Parser(current_loader)
-    # p.parse()
+    exp = Experiment(f"/{current_loader.dataset_name}_{train_ae}")  # need to change for a more accurate representation
+    experiments.append(exp)
 
     data, mapping = pre.pre_to_feature(current_loader)
     agg_df = pre.aggregate_data(data)
 
     print(current_loader.dataset_name)
-    print(len(current_loader.data))
-    print(current_loader.data.anomaly.sum())
+    print(len(data))
+    print(data.anomaly.sum())
 
     tensor_data, selected_data = pre.create_tensor_matrix(agg_df, train_ae, current_loader.dataset_name, minmax_model_to_load)
     if train_ae:
-        ae = AE.train(tensor_data.shape[1], tensor_data, current_loader.dataset_name, minmax_model_to_load)
+        ae = AE.train(tensor_data.shape[1], tensor_data, current_loader.dataset_name)
     else:
         ae = AE.load(tensor_data.shape[1], ae_model_to_load)
 
@@ -69,9 +67,9 @@ kmeans, kmeans_clusters = eva.cluster_kmeans(vectors_array)
 clusters, centroids_2d, df = eva.add_cluster_data(kmeans_clusters, kmeans,  selected_data, df_vec, data_2d, umap_model)
 
 eva.detect_LOF(df, df_vec)
-eva.create_confusion_matrix(df)
-eva.roc_graph(df)
-eva.apply_state(df, current_loader.dataset_name, pred_column='lof_prediction')
+eva.roc_graph(df, exp)
+eva.apply_state(df, current_loader.dataset_name, exp, pred_column='lof_prediction')
+# eva. apply_labels(df, current_loader.dataset_name, exp)
 
-eva.visualise_clusters(df, centroids_2d, current_loader.dataset_name, window_size, hue='state')
-eva.interactive_graph(df, current_loader.dataset_name, selected_data, window_size, train_ae)
+eva.visualise_clusters(df, centroids_2d, current_loader.dataset_name, window_size, exp, hue='state')
+eva.interactive_graph(df, current_loader.dataset_name, selected_data, window_size, train_ae, exp)

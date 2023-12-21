@@ -2,11 +2,12 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, roc_curve,  auc
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 from sklearn.neighbors import LocalOutlierFactor
-import umap
+import umap.umap_ as umap
 import pandas as pd
 import numpy as np
 import seaborn as sns
-import plotly as plt
+from matplotlib import pyplot as plt
+# import plotly as plt
 import plotly.io as pio
 import plotly.express as px
 
@@ -38,7 +39,7 @@ def add_cluster_data(clusters, kmeans,  selected_data, df_vec, data_2d, umap_mod
     # Transform centroids to the same 2D space as the data
     centroids_2d = umap_model.transform(centroids)
     print('finished clustering')
-    return clusters, centroids_2d ,df
+    return clusters, centroids_2d, df
 
 
 def detect_LOF(df, df_vec, n_neighbors=20, contamination=0.2):
@@ -63,16 +64,19 @@ def detect_LOF(df, df_vec, n_neighbors=20, contamination=0.2):
 
     # df['our_pred'] = df['lof_score'] != 1
     # df['our_pred'] = df['lof_score'] >  1.000652   # ROC based
-    # df['our_pred'] = df['lof_score'] > df['lof_threshold'] # source threshold based
+    df['our_pred'] = df['lof_score'] > df['lof_threshold']  # source threshold based
 
 
-def create_confusion_matrix(df, pred_column='lof_prediction'):
+def create_confusion_matrix(df, exp, pred_column='our_pred'):
     cm = confusion_matrix(y_true=df['anomaly'], y_pred=df[pred_column], labels=[0, 1])
     # Display confusion matrix
-    ConfusionMatrixDisplay(cm, display_labels=['Benign', 'Anomaly']).plot(values_format='d')
+    disp = ConfusionMatrixDisplay(cm, display_labels=['Benign', 'Anomaly']).plot(values_format='d')
+    disp.plot(values_format='d')
+    # Save the plot to a file
+    plt.savefig(exp.plots_dir + '/confusion_matrix.png', bbox_inches='tight')
 
 
-def roc_graph(df):
+def roc_graph(df, exp):
     # Generate ROC curve data
     fpr, tpr, thresholds = roc_curve(df['anomaly'], df['lof_score'])
     # Calculate the AUC
@@ -94,6 +98,7 @@ def roc_graph(df):
     plt.title('Receiver Operating Characteristic')
     plt.legend(loc="lower right")
     plt.show()
+    plt.savefig(exp.plots_dir + '/roc_curve.png', bbox_inches='tight')
 
 
 # Define a function to categorize each row
@@ -108,12 +113,12 @@ def categorize_row(row, prediction):
         return 'FN'  # False Negative
 
 
-def apply_state(df, dataset_name, pred_column):
+def apply_state(df, dataset_name, exp, pred_column):
     # Apply the function to each row
     df['state'] = df.apply(lambda row: categorize_row(row, pred_column), axis=1)
     df_state_breakdown = df.groupby(['state', 'source']).count().query('time_window>0')['time_window']
     print(df_state_breakdown)
-    df.to_csv(f"{dataset_name} state breakdown.csv")
+    df.to_csv(exp.results + f"/{dataset_name} state breakdown.csv")
 
 
 def scores_to_indices(lof):
@@ -133,7 +138,7 @@ def get_unique_clusters(kmeans):
     return unique_clusters
 
 
-def visualise_clusters(df, centroids_2d, dataset_name, window_size, hue='source'):
+def visualise_clusters(df, centroids_2d, dataset_name, window_size, exp, hue='source'):
     # Visualize the clusters for each time window
     plt.figure(figsize=(15, 7))
     sns.scatterplot(data=df, x='x', y='y', hue=hue, palette='dark')
@@ -146,10 +151,10 @@ def visualise_clusters(df, centroids_2d, dataset_name, window_size, hue='source'
     plt.xlabel('x')
     plt.ylabel('y')
     plt.legend()
-    plt.show()
+    plt.savefig(exp.plots_dir + f"/{hue}_{dataset_name}.jpg")
 
 
-def interactive_graph(df, dataset_name, selected_data, window_size, train_ae):
+def interactive_graph(df, dataset_name, selected_data, window_size, train_ae, exp):
     # Create a scatter plot with hover data
     fig = px.scatter(df, x='x', y='y', color='anomaly', symbol='source',
                      title=f'{dataset_name}- Function Behaviour over TimeWindows of {int(window_size)} minutes, {dataset_name}- train AE={train_ae}',
@@ -176,10 +181,10 @@ def interactive_graph(df, dataset_name, selected_data, window_size, train_ae):
 
     # Show the plot
     fig.show()
-    pio.write_html(fig, f"{dataset_name} - train with AE {train_ae}.html")
+    pio.write_html(fig, exp.plots_dir + f"{dataset_name} - train with AE {train_ae}.html")
 
 
-def evaluate_model_performance(data, true_label_col, predicted_label_col, dataset_name):
+def evaluate_model_performance(data, true_label_col, predicted_label_col, dataset_name, exp):
     # Compute metrics
     accuracy = accuracy_score(data[true_label_col], data[predicted_label_col])
     precision = precision_score(data[true_label_col], data[predicted_label_col])
@@ -188,22 +193,22 @@ def evaluate_model_performance(data, true_label_col, predicted_label_col, datase
     # ROC AUC can be included if predicted_label_col contains scores/probabilities
 
     # Confusion Matrix
-    conf_matrix = create_confusion_matrix(data[true_label_col], data[predicted_label_col])
+    create_confusion_matrix(data[true_label_col], exp, pred_column=data[predicted_label_col])
 
     # Creating a DataFrame to hold the results
     results_df = pd.DataFrame({
         'Dataset': dataset_name,
         'Metric': ['Accuracy', 'Precision', 'Recall', 'F1 Score', 'Confusion Matrix'],
-        'Value': [accuracy, precision, recall, f1, conf_matrix]
+        'Value': [accuracy, precision, recall, f1]
     })
 
     return results_df
 
 
-def apply_labels(df, dataset_name, pred_column='lof_prediction'):
+def apply_labels(df, dataset_name, exp, pred_column='lof_prediction'):
     # Replace these with the actual column names in your dataset
     true_label_col = 'anomaly'
     # Evaluate the model performance
-    evaluation_results = evaluate_model_performance(df, true_label_col, pred_column, dataset_name)
+    evaluation_results = evaluate_model_performance(df, true_label_col, pred_column, dataset_name, exp)
     print(evaluation_results)
-    evaluation_results.to_csv(f"{dataset_name} - {pred_column} - metrics scores.csv")
+    evaluation_results.to_csv(exp.results + f"{dataset_name} - {pred_column} - metrics scores.csv")

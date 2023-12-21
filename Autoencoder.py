@@ -48,7 +48,7 @@ class Autoencoder(nn.Module):
         return df_vec
 
 
-def train(input_size, tensor_data, dataset_name, lr=0.000032, epochs=35):
+def train(input_size, tensor_data, dataset_name, lr=0.00005, epochs=35):
     autoencoder = Autoencoder(input_size)
     criterion = nn.MSELoss()
     optimizer = optim.Adam(autoencoder.parameters(), lr=lr)
@@ -60,7 +60,7 @@ def train(input_size, tensor_data, dataset_name, lr=0.000032, epochs=35):
     for epoch in range(num_epochs):
         total_loss = 0
         for inputs, _ in train_loader:
-            reconstructed = Autoencoder(inputs)
+            reconstructed = autoencoder(inputs)
             loss = criterion(reconstructed, inputs)
             optimizer.zero_grad()
             loss.backward()
@@ -70,7 +70,7 @@ def train(input_size, tensor_data, dataset_name, lr=0.000032, epochs=35):
         epoch_losses.append(average_loss)
         print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {average_loss:.4f}, Total Loss {total_loss:.4f}')
 
-    model_file_name = f"/content/drive/MyDrive/model/{dataset_name}.mdl"
+    model_file_name = f"models/{dataset_name}.mdl"
     # model_file_name = f"/content/drive/MyDrive/model/combined benign-5.mdl"
     torch.save(autoencoder.state_dict(), model_file_name)
     print(f"Saving AutoEncoder: {model_file_name}")

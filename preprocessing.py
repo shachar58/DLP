@@ -1,5 +1,6 @@
 import joblib
 import torch
+import os
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 
@@ -69,13 +70,23 @@ def clean_and_separate_data(dataset_name, data, window_size=1):
         # Apply the function
         data['target'] = data.apply(set_target, axis=1)
         data['bucket_access'] = 'private'
-        data.loc[data['target'].str.contains("public"), 'bucket_access'] = 'public'
+        try:
+            data.loc[data['target'].str.contains("public"), 'bucket_access'] = 'public'
+        except:
+            print("no public labels for buckets")
+    if any(substring in dataset_name for substring in ['vod']):
+        print('cleaning VOD dataset')
+        data = data.dropna(subset=['source'])
+        data = data[data['source'] != 'VODApplication-ErrorHandlerRole-YYQFY381BRQK']
+        data.reset_index(drop=True, inplace=True)
+        # data = data.iloc[:200000]
+        print(len(data))
 
-        data['anomaly'] = data.get('anomaly', 0)
-
-    if any(substring in dataset_name for substring in ['airline', 'vod', 'small scale benign']):
+    data['anomaly'] = data.get('anomaly', 0)
+    try:
         data['anomaly'] = (data['key'].str.contains("leak")).astype(int)
-
+    except:
+        print("no anomalies labels")
     # adapter for all data sources
     data = data[['time_window', 'time_window_start', 'time_window_size', 'time', 'operation', 'readonly',
                  'source', 'target', 'key', 'bucket_access', 'anomaly']]
@@ -158,9 +169,9 @@ def feature_extraction(data):
 
     # Count 'private' and 'public' bucket_access for each time_window and source
     data['f_count_private'] = data.groupby(['time_window', 'source'], observed=True).bucket_access.transform(
-        lambda x: (x == 'private').count())
+        lambda x: (x == 'private').sum())
     data['f_count_public'] = data.groupby(['time_window', 'source'], observed=True).bucket_access.transform(
-        lambda x: (x == 'public').count())
+        lambda x: (x == 'public').sum())
 
     # Set ratio to 0 when both counts are 0, otherwise calculate the normal ratio
     data['f_private_public_ratio'] = data.apply(
@@ -171,8 +182,8 @@ def feature_extraction(data):
         lambda x: (x == 'public').mean() * 100)
 
     # Binary features for the presence of 'public' and 'private' accesses
-    data['f_has_private_access'] = (data['f_count_private'] > 0).astype(int)
-    data['f_has_public_access'] = (data['f_count_public'] > 0).astype(int)
+    data['f_has_private_access'] = (data['f_count_private'] > 0).astype(bool)
+    data['f_has_public_access'] = (data['f_count_public'] > 0).astype(bool)
     return data
 
 
@@ -189,10 +200,23 @@ def aggregate_data(data):
 
     # Group by 'time_window' and 'source', then take the max
     grouped = data.groupby(['time_window', 'source'], observed=True)
-    grouped_data = grouped.max()
+
+    # Separate numerical and categorical columns
+    numerical_cols = data.select_dtypes(include=['number']).columns.tolist()
+    categorical_cols = data.select_dtypes(exclude=['number']).columns.tolist()
+
+    # Apply max to numerical columns
+    grouped_numerical = grouped[numerical_cols].max()
+
+    # Apply first (or another appropriate function) to categorical columns
+    grouped_categorical = grouped[categorical_cols].first()
+
+    # Combine the results
+    grouped_combined = pd.concat([grouped_numerical, grouped_categorical], axis=1)
 
     # Filter columns that start with 'f_' or are in the list of additional columns
-    agg_data = grouped_data.filter(items=[col for col in grouped_data.columns if col.startswith('f_') or col in additional_max_columns])
+    agg_data = grouped_combined.filter(
+        items=[col for col in grouped_combined.columns if col.startswith('f_') or col in additional_max_columns])
 
     # Add the first value of specific columns from the grouped DataFrame
     for col in first_val_columns:
@@ -211,8 +235,10 @@ def create_tensor_matrix(agg_df, train_ae, dataset_name, minmax_model_to_load):
     if train_ae:
         min_max_scaler = MinMaxScaler()
         min_max_scaler.fit(selected_data[AE_cols].values)
-        model_file_name = f'/content/drive/MyDrive/model/{dataset_name}_min_max_scaler.joblib'
-        # model_file_name=f'/content/drive/MyDrive/model/combined benign_max_scaler-5.joblib'
+        model_file_name = f'models/{dataset_name}_min_max_scaler.joblib'
+        directory = os.path.dirname(model_file_name)
+        if not os.path.exists(directory):
+            os.makedirs(directory)
         joblib.dump(min_max_scaler, model_file_name)
         print(f"Saving MinMax: {model_file_name}")
     else:
@@ -223,4 +249,4 @@ def create_tensor_matrix(agg_df, train_ae, dataset_name, minmax_model_to_load):
     normalized_selected_data = min_max_scaler.transform(selected_data[AE_cols].values)
 
     tensor_data = torch.tensor(normalized_selected_data, dtype=torch.float32)
-    return tensor_data, normalized_selected_data
+    return tensor_data, selected_data
