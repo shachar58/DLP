@@ -40,7 +40,9 @@ for file in csv_files:
     loaders[loader_name].load_dataset()
 # End of Data Loading Stage
 
+# Creating an array
 experiments = []
+# Preprocessing each DatasetLoader dataset
 for current_loader in loaders:
     current_loader = loaders[current_loader]
     exp = Experiment(f"/{current_loader.dataset_name}_{train_ae}")  # need to change for a more accurate representation
@@ -69,6 +71,7 @@ clusters, centroids_2d, df = eva.add_cluster_data(kmeans_clusters, kmeans,  sele
 eva.detect_LOF(df, df_vec)
 eva.roc_graph(df, exp)
 eva.apply_state(df, current_loader.dataset_name, exp, pred_column='lof_prediction')
+eva.evaluate_model_performance(df, 'anomaly', 'lof_prediction', current_loader.dataset_name, exp)
 # eva. apply_labels(df, current_loader.dataset_name, exp)
 
 eva.visualise_clusters(df, centroids_2d, current_loader.dataset_name, window_size, exp, hue='state')

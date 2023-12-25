@@ -6,10 +6,24 @@ from sklearn.preprocessing import MinMaxScaler
 
 
 def nans(df):
+    """
+    Identifies rows in the DataFrame that contain NaN (Not a Number) values.
+    Parameters:
+        df (DataFrame): The DataFrame to be examined.
+    Returns:
+        DataFrame: A DataFrame containing only the rows with NaN values.
+    """
     return df[df.isnull().any(axis=1)]
 
 
 def missing_values_table(df):
+    """
+    Creates a summary table of missing values in a DataFrame.
+    Parameters:
+        df (DataFrame): The DataFrame to be analyzed.
+    Returns:
+        DataFrame: A summary table showing the number and percentage of missing values in each column.
+    """
     mis_val = df.isnull().sum()
     mis_val_percent = 100 * df.isnull().sum() / len(df)
     mis_val_table = pd.concat([mis_val, mis_val_percent], axis=1)
@@ -24,6 +38,13 @@ def missing_values_table(df):
 
 
 def set_target(row):
+    """
+    Sets a target value based on the type of column in a DataFrame row.
+    Parameters:
+        row (Series): A row from the DataFrame.
+    Returns:
+        str: The target value determined based on the 'eventsource'.
+    """
     if row['eventsource'] == 's3.amazonaws.com':
         return row['requestparameters_bucketname']
     elif row['eventsource'] == 'dynamodb.amazonaws.com':
@@ -33,6 +54,16 @@ def set_target(row):
 
 
 def clean_and_separate_data(dataset_name, data, window_size=1):
+    """
+    Cleans and processes the data, including filtering out specific rows,
+    sorting, and creating new time window columns.
+    Parameters:
+        dataset_name (str): The name of the dataset.
+        data (DataFrame): The DataFrame to be processed.
+        window_size (int): The size of the time window to be used for data processing.
+    Returns:
+        DataFrame: The processed DataFrame.
+    """
     print(dataset_name)
     try:
         data = data[~data['sourceipaddress'].isin(['config.amazonaws.com', 'appsync.amazonaws.com'])]
@@ -94,6 +125,14 @@ def clean_and_separate_data(dataset_name, data, window_size=1):
 
 
 def combine_datasets(loaders, load_key_array=('small benign file', 'airlines july benign', 'vod oct anomaly')):
+    """
+    Combines multiple datasets from provided loaders based on specified keys.
+    Parameters:
+        loaders (dict): A dictionary of data loaders.
+        load_key_array (tuple): A tuple of keys representing which datasets to load and combine.
+    Returns:
+        DataFrame: A combined DataFrame consisting of data from the specified loaders.
+    """
     for k in load_key_array:
         loaders[k].load_dataset()
     all_datasets = {'small benign file': None,
@@ -123,6 +162,14 @@ def combine_datasets(loaders, load_key_array=('small benign file', 'airlines jul
 
 
 def category_mapping(data, columns_to_encode=('operation', 'readonly', 'source', 'target', 'bucket_access')):
+    """
+    Encodes specified categorical columns in the DataFrame into categories.
+    Parameters:
+        data (DataFrame): The DataFrame containing the data to be encoded.
+        columns_to_encode (tuple): A tuple of column names to be encoded.
+    Returns:
+        DataFrame: A DataFrame with the mapping of categories for each specified column.
+    """
     category_mappings = {}
     # Loop through each column, convert to categorical, and store the category-code mapping
     for col in columns_to_encode:
@@ -138,6 +185,13 @@ def category_mapping(data, columns_to_encode=('operation', 'readonly', 'source',
 
 
 def remove_minmax_window(data):
+    """
+    Removes the first and last time windows from the data to handle partial event counts.
+    Parameters:
+        data (DataFrame): The DataFrame from which the first and last time windows are to be removed.
+    Returns:
+        DataFrame: The DataFrame after the removal of the first and last time windows.
+    """
     # remove first and last time windows due to natural data anomalies (partial event count in time window)
     min_tw = data.time_window.min()
     max_tw = data.time_window.max()
@@ -149,7 +203,14 @@ def remove_minmax_window(data):
     return data
 
 
-def preprocess(dataloader):
+def _preprocess(dataloader):
+    """
+    Preprocesses data from a dataloader, including cleaning, separating, and mapping categories.
+    Parameters:
+        dataloader (DatasetLoader): The dataloader containing the data to be preprocessed.
+    Returns:
+        tuple: A tuple containing the preprocessed data and the mapping of categories.
+    """
     data = dataloader.data.copy()
     dataset_name = dataloader.dataset_name
     data = clean_and_separate_data(dataset_name, data)
@@ -158,7 +219,14 @@ def preprocess(dataloader):
     return data, mapping
 
 
-def feature_extraction(data):
+def _feature_extraction(data):
+    """
+   Performs feature extraction on the provided data.
+   Parameters:
+       data (DataFrame): The DataFrame from which features are to be extracted.
+   Returns:
+       DataFrame: The DataFrame with additional extracted features.
+   """
     # Calculate the percentage of 'readonly == False' for each group and add it as a new column
     data['f_write_access_percentage'] = data.groupby(['time_window', 'source'], observed=True)['readonly'].transform(
         lambda x: (x == False).mean() * 100)
@@ -188,12 +256,26 @@ def feature_extraction(data):
 
 
 def pre_to_feature(dataloader):
-    data, mapping = preprocess(dataloader)
-    data = feature_extraction(data)
+    """
+    Runs preprocessing and feature extraction on data from a dataloader.
+    Parameters:
+        dataloader (DatasetLoader): The dataloader containing the data.
+    Returns:
+        tuple: A tuple containing the preprocessed and feature-extracted data, and the mapping of categories.
+    """
+    data, mapping = _preprocess(dataloader)
+    data = _feature_extraction(data)
     return data, mapping
 
 
 def aggregate_data(data):
+    """
+    Aggregates data by 'time_window' and 'source', applying specific operations to different types of columns.
+    Parameters:
+        data (DataFrame): The DataFrame to be aggregated.
+    Returns:
+        DataFrame: The aggregated DataFrame.
+    """
     data.sort_values(['time_window', 'source'], inplace=True)
     additional_max_columns = ['time_window_size', 'anomaly']
     first_val_columns = ['time_window_start', 'time']
@@ -229,6 +311,16 @@ def aggregate_data(data):
 
 
 def create_tensor_matrix(agg_df, train_ae, dataset_name, minmax_model_to_load):
+    """
+   Creates a tensor matrix from the aggregated DataFrame and applies MinMax normalization.
+   Parameters:
+       agg_df (DataFrame): The aggregated DataFrame.
+       train_ae (bool): Flag indicating whether to train an autoencoder.
+       dataset_name (str): The name of the dataset.
+       minmax_model_to_load (str): The file path to load the MinMaxScaler model.
+   Returns:
+       tuple: A tuple containing the tensor matrix and the selected DataFrame.
+   """
     exclude_cols = ['f_count_public', 'f_count_private']
     AE_cols = [col for col in agg_df.columns if (col.startswith('f_') and col not in exclude_cols)]
     selected_data = agg_df.dropna(how='all', subset=AE_cols).reset_index(drop=True)
