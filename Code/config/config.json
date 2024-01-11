@@ -1,0 +1,24 @@
+{
+  "data_dir": "data/",
+  "csv_files": [
+    "airlines_july_benign.csv",
+    "airlines_july_anomaly.csv"
+  ],
+  "files_not_in_use": [
+    "vod_oct_benign.csv",
+    "vod_oct_anomaly.csv",
+
+    "small_benign_file.csv",
+    "small_anomalies_file.csv",
+
+    "combined-dataset.csv",
+    "combined-anomaly.csv"
+
+  ],
+
+  "window_size": 1,
+  "train_ae": "True",
+  "ae_model_to_load":"models/combined-benign.mdl",
+  "minmax_model_to_load":"models/combined-benign.joblib"
+
+}
