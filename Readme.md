@@ -21,7 +21,7 @@ This project was tested on **linux** with **python 3.10**
 # Modules/Architecture
 The Data Leakage Detection Method use the following modules:
 
-![Docs\Modules.JPG](Docs\Modules.JPG)
+[<img src="Docs\Modules.JPG">](Docs\Modules.JPG)
 
 - Algorithm Overview:
   - This algorithm is using the recurring patterns in the data to find anomalous activity.
